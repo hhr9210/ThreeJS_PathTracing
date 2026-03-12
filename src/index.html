@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js 路径追踪 - 改进版康奈尔盒子</title>
+    <style>
+        body { margin:0; overflow:hidden; background:#000; font-family:sans-serif; }
+        #info { position:fixed; top:10px; right:10px; left:auto; color:white; background:rgba(0,0,0,0.55); padding:6px 10px; border-radius:10px; pointer-events:none; font-size:12px; letter-spacing:0.2px; }
+        #controls { position:fixed; top:10px; left:10px; width:280px; color:#f3f4f6; background:rgba(17,24,39,0.72); padding:10px; border-radius:14px; border:1px solid rgba(255,255,255,0.10); box-shadow:0 10px 30px rgba(0,0,0,0.35); line-height:1.25; font-size:12px; max-height:calc(100vh - 20px); overflow:auto; backdrop-filter:blur(10px); }
+        #controls .section-title { font-weight:700; margin:10px 0 6px; font-size:12px; color:#ffffff; opacity:0.95; }
+        #controls .row { display:flex; align-items:center; gap:8px; }
+        #controls .row + .row { margin-top:6px; }
+        #controls .label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #controls .value { min-width:52px; text-align:right; color:#cbd5e1; font-variant-numeric:tabular-nums; }
+        #controls input[type="range"] { width:100%; margin-top:2px; }
+        #controls input[type="number"] { width:72px; }
+        #controls button { appearance:none; border:1px solid rgba(255,255,255,0.14); background:rgba(255,255,255,0.08); color:#fff; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px; }
+        #controls button:hover { background:rgba(255,255,255,0.12); }
+        #controls button:active { transform:translateY(1px); }
+        #controls input[type="color"] { width:100%; height:26px; padding:0; border:none; background:transparent; }
+        /* 自定义滑动条的轨道（横线） */
+        #controls input[type="range"] {
+            -webkit-appearance: none; /* 禁用系统默认样式 */
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+
+        /* 自定义滑动条的滑块（小圆点） */
+        #controls input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #3b82f6; /* 科技蓝 */
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body>
+<div id="info">渲染帧数累积中...</div>
+
+<div id="container"></div>
+<style>
+    body { margin:0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #111; }
+    #container { 
+        width: 500px;   /* 设置你想要的宽度 */
+        height: 650px;  /* 设置你想要的高度 */
+        position: relative;
+        overflow: hidden;
+        border: 2px solid #444;
+    }
+</style>
+
+
+
+<div id="controls">
+    <div class="section-title">渲染</div>
+    <div class="row">
+        <div class="label">最大反射次数</div>
+        <div class="value"><span id="bouncesVal">8</span></div>
+    </div>
+    <input type="range" id="bouncesInput" min="1" max="16" step="1" value="8">
+
+    <div class="section-title">场景物体</div>
+    <div class="row"><div class="label">玻璃球 X</div><div class="value"><span id="glassXVal">0.5</span></div></div>
+    <input type="range" id="glassX" min="-3" max="3" step="0.01" value="0.5">
+    <div class="row"><div class="label">玻璃球 Y</div><div class="value"><span id="glassYVal">0.8</span></div></div>
+    <input type="range" id="glassY" min="0" max="3" step="0.01" value="0.8">
+    <div class="row"><div class="label">玻璃球 Z</div><div class="value"><span id="glassZVal">0</span></div></div>
+    <input type="range" id="glassZ" min="-5" max="2" step="0.01" value="0">
+    <div class="row"><div class="label">玻璃球半径</div><div class="value"><span id="glassRVal">0.8</span></div></div>
+    <input type="range" id="glassR" min="0.2" max="2" step="0.01" value="0.8">
+    <div class="row"><div class="label">玻璃 IOR</div><div class="value"><span id="glassIorVal">1.1</span></div></div>
+    <input type="range" id="glassIor" min="1.0" max="2.5" step="0.01" value="1.1">
+
+    <div class="section-title">材质</div>
+    <div class="row"><div class="label">木头粗糙度强度</div><div class="value"><span id="woodRoughVal">1.0</span></div></div>
+    <input type="range" id="woodRough" min="0" max="2" step="0.01" value="1.0">
+    <div class="row"><div class="label">木头金属度强度</div><div class="value"><span id="woodMetalVal">1.0</span></div></div>
+    <input type="range" id="woodMetal" min="0" max="2" step="0.01" value="1.0">
+    <div class="row">
+    <div class="label">法线强度</div>
+    <div class="value"><span id="normalStrengthVal">1.0</span></div>
+</div>
+<input type="range" id="normalStrength" min="0" max="2" step="0.01" value="1.0">
+
+    <div class="section-title">光照</div>
+    <div class="row"><div class="label">光源强度</div><div class="value"><span id="lightIntVal">2.0</span></div></div>
+    <input type="range" id="lightIntensity" min="0" max="10" step="0.01" value="2.0">
+    <div class="row"><div class="label">光源颜色</div><div class="value"></div></div>
+    <input type="color" id="lightColor" value="#ffffff">
+
+    <div class="section-title">画布尺寸</div>
+    <div class="row">
+        <div class="label">宽度</div>
+        <input type="number" id="widthInput" value="700" step="10">
+        <div class="label" style="text-align:right;">高度</div>
+        <input type="number" id="heightInput" value="560" step="10">
+    </div>
+    <div class="row">
+        <button id="resizeBtn">应用修改</button>
+        <button id="resetBtn">重置渲染</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+}
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_frame;
+uniform vec3 u_camPos;
+uniform mat4 u_camMat;
+uniform sampler2D u_albedoMap;
+uniform sampler2D u_normalMap;
+uniform sampler2D u_roughnessMap;
+uniform sampler2D u_metalnessMap;
+uniform int u_maxBounces;
+uniform vec3 u_lightColor;
+uniform float u_lightIntensity;
+uniform vec3 u_woodCenter;
+uniform float u_woodRadius;
+uniform vec3 u_glassCenter;
+uniform float u_glassRadius;
+uniform float u_glassIOR;
+uniform float u_woodRoughnessScale;
+uniform float u_woodMetalnessScale;
+uniform float u_woodTexTiling;
+varying vec2 vUv;
+uniform float u_normalStrength; 
+
+const float MAX_DIST = 100.0;
+const float EPSILON = 0.002;
+const int MAX_BOUNCES = 16; 
+
+// --- 改进的随机函数 ---
+float rand(vec2 co){
+    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+vec3 randomOnSphere(vec2 seed){
+    float u = rand(seed) * 2.0 - 1.0;
+    float v = rand(seed + 0.333) * 6.283185;
+    float r = sqrt(max(0.0, 1.0 - u * u));
+    return vec3(r * cos(v), r * sin(v), u);
+}
+
+float fresnelSchlick(float cosTheta, float F0) {
+    return F0 + (1.0 - F0) * pow(max(0.0, 1.0 - cosTheta), 5.0);
+}
+
+// --- 材质与碰撞 ---
+struct Material { 
+    vec3 color; 
+    vec3 emission; 
+    float roughness;
+    float metalness;
+    float ior;
+    float subsurface; // 0.0 到 1.0，表示次表面散射强度
+    bool hasTextures; 
+};
+struct Hit { float t; vec3 p; vec3 n; vec2 uv; Material mat; };
+
+// 计算球体 UV
+vec2 getSphereUV(vec3 p, vec3 center) {
+    vec3 d = normalize(p - center);
+    float u = 0.5 + atan(d.z, d.x) / (2.0 * 3.1415926);
+    float v = 0.5 - asin(d.y) / 3.1415926;
+    return vec2(u, v);
+}
+
+// 计算平面 UV
+vec2 getPlaneUV(vec3 p, vec3 n) {
+    vec3 up = abs(n.y) < 0.999 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 uDir = normalize(cross(up, n));
+    vec3 vDir = cross(n, uDir);
+    return vec2(dot(p, uDir), dot(p, vDir)) * 0.5;
+}
+
+float iSphere(vec3 ro, vec3 rd, vec3 center, float r){
+    vec3 oc = ro - center;
+    float b = dot(oc, rd);
+    float c = dot(oc, oc) - r*r;
+    float h = b*b - c;
+    if (h < 0.0) return -1.0;
+    h = sqrt(max(0.0, h));
+    float t1 = -b - h;
+    float t2 = -b + h;
+    if (t1 > EPSILON) return t1;
+    if (t2 > EPSILON) return t2;
+    return -1.0;
+}
+
+float iBox(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax, out vec3 outNormal) {
+    vec3 invRd = 1.0 / rd;
+    vec3 t0 = (boxMin - ro) * invRd;
+    vec3 t1 = (boxMax - ro) * invRd;
+    vec3 tmin = min(t0, t1);
+    vec3 tmax = max(t0, t1);
+    float tm_min = max(max(tmin.x, tmin.y), tmin.z);
+    float tm_max = min(min(tmax.x, tmax.y), tmax.z);
+    if (tm_max < max(0.0, tm_min)) return -1.0;
+    if (tm_min > EPSILON) {
+        vec3 p = ro + rd * tm_min;
+        vec3 center = (boxMin + boxMax) * 0.5;
+        vec3 d = p - center;
+        vec3 s = abs(boxMax - center);
+        vec3 n = d / s;
+        outNormal = vec3(0.0);
+        if (abs(n.x) > 0.99) outNormal.x = sign(n.x);
+        else if (abs(n.y) > 0.99) outNormal.y = sign(n.y);
+        else outNormal.z = sign(n.z);
+        return tm_min;
+    }
+    return -1.0;
+}
+
+void checkPlane(vec3 ro, vec3 rd, vec3 n, float d, Material m, inout Hit best){
+    float denom = dot(rd, n);
+    if (abs(denom) < 1e-6) return;
+    float t = -(dot(ro, n) + d) / denom;
+    if(t > EPSILON && t < best.t){
+        best.t = t;
+        best.p = ro + t * rd;
+        best.n = n;
+        best.uv = getPlaneUV(best.p, n);
+        best.mat = m;
+    }
+}
+
+// 法线贴图转换,构建tbn矩阵转换发现
+vec3 getNormalFromMap(sampler2D map, vec2 uv, vec3 normal, float strength) {
+    vec3 mapNormal = texture2D(map, uv).rgb * 2.0 - 1.0;
+    
+    // 应用强度控制 - 在切线空间缩放法线的 xy 分量
+    mapNormal.xy *= strength;
+    mapNormal = normalize(mapNormal);  // 重新归一化
+    
+    vec3 up = abs(normal.y) < 0.999 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 tangent = normalize(cross(up, normal));
+    vec3 bitangent = cross(tangent, normal);
+    mat3 tbn = mat3(tangent, bitangent, normal);
+    
+    return normalize(tbn * mapNormal);
+}
+
+// 场景定义
+Hit getScene(vec3 ro, vec3 rd){
+    Hit hit; hit.t = MAX_DIST;
+    
+    Material white = Material(vec3(0.7), vec3(0.0), 0.8, 0.0, 0.0, 0.0, false);
+    Material red = Material(vec3(0.8, 0.05, 0.05), vec3(0.0), 0.8, 0.0, 0.0, 0.0, false);
+    Material green = Material(vec3(0.05, 0.8, 0.05), vec3(0.0), 0.8, 0.0, 0.0, 0.0, false);
+    Material lightMat = Material(vec3(0.0), u_lightColor * u_lightIntensity, 0.0, 0.0, 0.0, 0.0, false); 
+    Material woodBall = Material(vec3(2.0), vec3(0.0), 1.0, 0.0, 0.0, 0.0, true);
+    Material glass = Material(vec3(0.9, 0.95, 1.0), vec3(0.0), 0.0, 0.0, u_glassIOR, 0.0, false);
+    Material sssMat = Material(vec3(0.8, 0.5, 0.6), vec3(0.0), 0.5, 0.0, 0.0, 0.8, false); // 蜡质/肉质 SSS
+
+    // 1. 地面 (棋盘格纹理)
+    float tFloor = -(dot(ro, vec3(0,1,0)) + 0.0) / dot(rd, vec3(0,1,0));
+    if (tFloor > EPSILON && tFloor < hit.t) {
+        vec3 p = ro + tFloor * rd;
+        float size = 0.5;
+        float checker = mod(floor(p.x / size) + floor(p.z / size), 2.0);
+        vec3 floorCol = mix(vec3(0.5), vec3(0.8), checker); 
+        hit.t = tFloor; hit.p = p; hit.n = vec3(0,1,0); hit.uv = getPlaneUV(p, hit.n);
+        hit.mat = Material(floorCol, vec3(0.0), 0.1, 0.0, 0.0, 0.0, false);
+    }
+
+    // 2. 其他墙壁
+    checkPlane(ro, rd, vec3(0,-1,0), 4.0, white, hit);
+    checkPlane(ro, rd, vec3(0,0,1), 5.0, white, hit);
+    checkPlane(ro, rd, vec3(1,0,0), 3.0, red, hit);
+    checkPlane(ro, rd, vec3(-1,0,0), 3.0, green, hit);
+
+    // 光源
+    vec3 p = ro + hit.t * rd;
+    if(hit.n.y == -1.0 && abs(p.x) < 1.5 && abs(p.z + 2.0) < 1.0) hit.mat = lightMat;
+
+    // 球体
+    float ts = iSphere(ro, rd, u_woodCenter, u_woodRadius);
+    if(ts > EPSILON && ts < hit.t){
+        hit.t = ts; hit.p = ro + ts * rd;
+        hit.n = normalize(hit.p - u_woodCenter);
+        hit.uv = getSphereUV(hit.p, u_woodCenter);
+        hit.mat = woodBall;
+    }
+
+    // 玻璃球
+    float ts2 = iSphere(ro, rd, u_glassCenter, u_glassRadius);
+    if(ts2 > EPSILON && ts2 < hit.t){
+        hit.t = ts2; hit.p = ro + ts2 * rd;
+        hit.n = normalize(hit.p - u_glassCenter);
+        hit.uv = getSphereUV(hit.p, u_glassCenter);
+        hit.mat = glass;
+    }
+
+    // 黄色球
+    float ts3 = iSphere(ro, rd, vec3(1.2, 0.4, -2.2), 0.4);
+    if(ts3 > EPSILON && ts3 < hit.t){
+        hit.t = ts3; hit.p = ro + ts3 * rd;
+        hit.n = normalize(hit.p - vec3(1.2, 0.4, -2.2));
+        hit.uv = getSphereUV(hit.p, vec3(1.2, 0.4, -2.2));
+        hit.mat = Material(vec3(0.8, 0.8, 0.2), vec3(0.0), 0.9, 0.0, 0.0, 0.0, false);
+    }
+
+    // 新增：SSS 长方体 (立在木头球前面)
+    vec3 boxN;
+    float tb = iBox(ro, rd, vec3(-1.7, 0.0, 0.0), vec3(-1.3, 2.0, -0.8), boxN);
+    if(tb > EPSILON && tb < hit.t){
+        hit.t = tb;
+        hit.p = ro + tb * rd;
+        hit.n = boxN;
+        hit.uv = vec2(0.0); // 简化处理，暂不给长方体贴图
+        hit.mat = sssMat;
+    }
+
+    return hit;
+}
+
+// 直接光照采样 (Next Event Estimation)
+vec3 sampleDirectLight(vec3 p, vec3 n, vec2 seed) {
+    vec3 lightPos = vec3((rand(seed)-0.5)*3.0, 3.99, -2.0 + (rand(seed+0.1)-0.5)*2.0);
+    vec3 lDir = lightPos - p;
+    float distSq = dot(lDir, lDir);
+    float dist = sqrt(distSq);
+    lDir /= dist;
+
+    if(dot(lDir, n) < 0.0) return vec3(0.0);
+
+    Hit shadowHit = getScene(p + n * EPSILON, lDir);
+    if(shadowHit.t < dist - EPSILON * 2.0) {
+        if(length(shadowHit.mat.emission) > 0.1) return shadowHit.mat.emission * 0.5;
+        return vec3(0.0);
+    }
+
+    float cosTheta = max(0.0, dot(lDir, n));
+    return (u_lightColor * u_lightIntensity) * cosTheta / distSq; 
+}
+
+void main(){
+    vec2 pixelUv = vUv;
+    vec2 seed = pixelUv + fract(u_frame * 0.71828);
+
+    vec2 jitter = (vec2(rand(seed), rand(seed + 0.1)) - 0.5) / u_resolution;
+    vec2 uv = (vUv + jitter - 0.5) * 2.0;
+    uv.x *= u_resolution.x/u_resolution.y;
+
+    vec3 ro = u_camPos;
+    vec3 rd = normalize(mat3(u_camMat) * vec3(uv.x, uv.y - 0.2, -2.5));
+
+    vec3 accumCol = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+
+    for(int i=0; i<MAX_BOUNCES; i++){
+        if(i >= u_maxBounces) break;
+        Hit hit = getScene(ro, rd);
+        if(hit.t >= MAX_DIST) break;
+
+        // 如果该材质有贴图，则进行采样覆盖并与基础色相乘（基础色可作为亮度增益）
+        if(hit.mat.hasTextures) {
+            vec2 texUv = fract(hit.uv * u_woodTexTiling); 
+            // 将基础色作为乘数，这样设置 Material 的 color > 1.0 就能让球变亮
+            hit.mat.color *= pow(texture2D(u_albedoMap, texUv).rgb, vec3(2.2)); 
+            hit.n = getNormalFromMap(u_normalMap, texUv, hit.n, u_normalStrength);
+            hit.mat.roughness = clamp(texture2D(u_roughnessMap, texUv).r * u_woodRoughnessScale, 0.0, 1.0);
+            hit.mat.metalness = clamp(texture2D(u_metalnessMap, texUv).r * u_woodMetalnessScale, 0.0, 1.0);
+        }
+
+        if(length(hit.mat.emission) > 0.0) {
+            accumCol += u_lightColor * throughput; 
+            break; 
+        }
+
+        vec3 normal = hit.n;
+        bool isInside = dot(rd, normal) > 0.0;
+        if(isInside) normal = -normal;
+
+        // 1. 玻璃折射处理
+        if(hit.mat.ior > 0.0) {
+            float eta = isInside ? hit.mat.ior : (1.0 / hit.mat.ior);
+            float cosTheta = min(dot(-rd, normal), 1.0);
+            float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+            float F0 = pow((1.0 - eta) / (1.0 + eta), 2.0);
+            float fresnel = max(0.1, fresnelSchlick(cosTheta, F0)); 
+            bool TIR = (eta * sinTheta > 1.0);
+            if(TIR || rand(seed + float(i)*0.34) < fresnel) {
+                rd = reflect(rd, normal); ro = hit.p + normal * EPSILON;
+            } else {
+                rd = refract(rd, normal, eta); ro = hit.p - normal * EPSILON;
+            }
+            throughput *= hit.mat.color; continue; 
+        }
+
+        // 2. 次表面散射 (SSS) 处理
+        if(hit.mat.subsurface > 0.0 && rand(seed + float(i) * 0.456) < hit.mat.subsurface) {
+            // 模拟进入内部并随机散射
+            vec3 scatterDir = randomOnSphere(seed + float(i) * 0.789);
+            // 确保散射方向大致朝向内部或随机
+            rd = scatterDir;
+            ro = hit.p - normal * EPSILON; // 进入内部
+            throughput *= hit.mat.color;
+            continue;
+        }
+
+        // 3. 直接光照采样 (NEE)
+        accumCol += sampleDirectLight(hit.p, normal, seed + float(i)) * hit.mat.color * throughput;
+
+        // 3. 间接光照
+        float cosTheta = max(0.0, dot(-rd, normal));
+        float F0 = mix(0.04, 1.0, hit.mat.metalness);
+        float fresnel = fresnelSchlick(cosTheta, F0);
+
+        vec3 diffuseDir = normalize(normal + randomOnSphere(seed + float(i) * 0.567));
+        vec3 specularDir = reflect(rd, normal);
+        specularDir = normalize(mix(specularDir, diffuseDir, hit.mat.roughness * hit.mat.roughness));
+
+        if(rand(seed + float(i) * 0.912) < fresnel) {
+            rd = specularDir;
+            throughput *= mix(vec3(1.0), hit.mat.color, hit.mat.metalness);
+        } else {
+            rd = diffuseDir;
+            throughput *= hit.mat.color;
+        }
+
+        ro = hit.p + normal * EPSILON;
+
+        if(i > 3){
+            float p = max(throughput.r, max(throughput.g, throughput.b));
+            if(rand(seed + float(i) * 0.123) > p) break;
+            throughput /= p;
+        }
+        if(length(throughput) < 0.001) break;
+    }
+
+    if(any(isnan(accumCol))) accumCol = vec3(0.0);
+    gl_FragColor = vec4(clamp(accumCol, 0.0, 10.0), 1.0);
+}
+</script>
+
+<script>
+// --- 场景与相机初始化 ---
+const container = document.getElementById('container');
+const width = container.clientWidth;
+const height = container.clientHeight;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+camera.position.set(0, 2, 7);
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(width, height);
+container.appendChild(renderer.domElement);
+
+// 使用 OrbitControls 实现交互
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1, -2.5); // 关注球体中心附近
+controls.update();
+
+// 监听相机移动，重置累积
+let frameCount = 0;
+controls.addEventListener('change', () => {
+    frameCount = 0;
+});
+
+// --- 累积缓冲 ---
+const targetOptions = {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.FloatType
+};
+let sampleTarget = new THREE.WebGLRenderTarget(width, height, targetOptions);
+let accumTargetA = new THREE.WebGLRenderTarget(width, height, targetOptions);
+let accumTargetB = new THREE.WebGLRenderTarget(width, height, targetOptions);
+
+// --- 贴图加载 ---
+const loader = new THREE.TextureLoader();
+
+const onTexLoad = () => { frameCount = 0; }; // 贴图加载完自动重置渲染累积
+
+const albedoMap = loader.load('wood_planks_12_color_1k.png', onTexLoad);
+const normalMap = loader.load('wood_planks_12_normal_gl_1k.png', onTexLoad);
+const roughnessMap = loader.load('wood_planks_12_roughness_1k.png', onTexLoad);
+const metalnessMap = loader.load('wood_planks_12_metalness_1k.png', onTexLoad);
+
+albedoMap.wrapS = THREE.RepeatWrapping;
+albedoMap.wrapT = THREE.RepeatWrapping;
+normalMap.wrapS = THREE.RepeatWrapping;
+normalMap.wrapT = THREE.RepeatWrapping;
+roughnessMap.wrapS = THREE.RepeatWrapping;
+roughnessMap.wrapT = THREE.RepeatWrapping;
+metalnessMap.wrapS = THREE.RepeatWrapping;
+metalnessMap.wrapT = THREE.RepeatWrapping;
+
+const rayMaterial = new THREE.ShaderMaterial({
+    uniforms:{
+        u_time: { value: 0 },
+        u_frame: { value: 0 },
+        u_resolution: { value: new THREE.Vector2(width, height) },
+        u_camPos: { value: camera.position },
+        u_camMat: { value: camera.matrixWorld },
+        u_albedoMap: { value: albedoMap },
+        u_normalMap: { value: normalMap },
+        u_roughnessMap: { value: roughnessMap },
+        u_metalnessMap: { value: metalnessMap },
+        u_maxBounces: { value: 8 },
+        u_lightColor: { value: new THREE.Color(1, 1, 1) },
+        u_lightIntensity: { value: 2.0 },
+        u_woodCenter: { value: new THREE.Vector3(-1.5, 0.8, -2.5) },
+        u_woodRadius: { value: 0.8 },
+        u_glassCenter: { value: new THREE.Vector3(0.5, 0.8, 0.0) },
+        u_glassRadius: { value: 0.8 },
+        u_glassIOR: { value: 1.1 },
+        u_woodRoughnessScale: { value: 1.0 },
+        u_woodMetalnessScale: { value: 1.0 },
+        u_woodTexTiling: { value: 2.0 },
+        u_normalStrength: { value: 1.0 }
+    },
+    vertexShader: document.getElementById('vertexShader').textContent,
+    fragmentShader: document.getElementById('fragmentShader').textContent
+});
+
+const blendMaterial = new THREE.ShaderMaterial({
+    uniforms:{
+        tNew: { value: null },
+        tOld: { value: null },
+        u_mix: { value: 0.0 }
+    },
+    vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,
+    fragmentShader: `
+        uniform sampler2D tNew;
+        uniform sampler2D tOld;
+        uniform float u_mix;
+        varying vec2 vUv;
+        void main(){
+            vec4 newC = texture2D(tNew, vUv);
+            vec4 oldC = texture2D(tOld, vUv);
+            gl_FragColor = mix(newC, oldC, u_mix);
+        }
+    `
+});
+
+const displayMaterial = new THREE.ShaderMaterial({
+    uniforms:{
+        tAccum: { value: null }
+    },
+    vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position,1.0);}`,
+    fragmentShader: `
+        uniform sampler2D tAccum;
+        varying vec2 vUv;
+        void main(){
+            vec4 col = texture2D(tAccum, vUv);
+            col.rgb = pow(col.rgb, vec3(1.0/2.2)); // Gamma 校正
+            gl_FragColor = vec4(col.rgb, 1.0);
+        }
+    `
+});
+
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), rayMaterial);
+const fullScreenScene = new THREE.Scene();
+fullScreenScene.add(quad);
+
+function animate(time){
+    frameCount++;
+    
+    // 1. 渲染新的采样帧
+    quad.material = rayMaterial;
+    rayMaterial.uniforms.u_time.value = time * 0.001;
+    rayMaterial.uniforms.u_frame.value = frameCount;
+    rayMaterial.uniforms.u_camPos.value.copy(camera.position);
+    rayMaterial.uniforms.u_camMat.value.copy(camera.matrixWorld);
+    
+    renderer.setRenderTarget(sampleTarget);
+    renderer.render(fullScreenScene, camera);
+
+    // 2. 混合累积
+    quad.material = blendMaterial;
+    blendMaterial.uniforms.tNew.value = sampleTarget.texture;
+    blendMaterial.uniforms.tOld.value = accumTargetA.texture;
+    blendMaterial.uniforms.u_mix.value = frameCount === 1 ? 0.0 : (frameCount - 1) / frameCount;
+    renderer.setRenderTarget(accumTargetB);
+    renderer.render(fullScreenScene, camera);
+
+    // 3. 显示结果
+    quad.material = displayMaterial;
+    displayMaterial.uniforms.tAccum.value = accumTargetB.texture;
+    renderer.setRenderTarget(null);
+    renderer.render(fullScreenScene, camera);
+
+    // 4. 交换
+    let tmp = accumTargetA;
+    accumTargetA = accumTargetB;
+    accumTargetB = tmp;
+
+    document.getElementById('info').innerText = `已累积帧数: ${frameCount}`;
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+window.onresize = ()=>{
+    const w = container.clientWidth, h = container.clientHeight;
+    renderer.setSize(w, h);
+    sampleTarget.setSize(w, h);
+    accumTargetA.setSize(w, h);
+    accumTargetB.setSize(w, h);
+    rayMaterial.uniforms.u_resolution.value.set(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    frameCount = 0;
+};
+</script>
+
+<script id = "resizeScript">
+    const widthInput = document.getElementById('widthInput');
+    const heightInput = document.getElementById('heightInput');
+    const resizeBtn = document.getElementById('resizeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const bouncesInput = document.getElementById('bouncesInput');
+    const bouncesVal = document.getElementById('bouncesVal');
+    const glassX = document.getElementById('glassX');
+    const glassY = document.getElementById('glassY');
+    const glassZ = document.getElementById('glassZ');
+    const glassR = document.getElementById('glassR');
+    const glassIor = document.getElementById('glassIor');
+    const glassXVal = document.getElementById('glassXVal');
+    const glassYVal = document.getElementById('glassYVal');
+    const glassZVal = document.getElementById('glassZVal');
+    const glassRVal = document.getElementById('glassRVal');
+    const glassIorVal = document.getElementById('glassIorVal');
+    const woodRough = document.getElementById('woodRough');
+    const woodMetal = document.getElementById('woodMetal');
+    const woodRoughVal = document.getElementById('woodRoughVal');
+    const woodMetalVal = document.getElementById('woodMetalVal');
+    const normalStrength = document.getElementById('normalStrength');
+    const normalStrengthVal = document.getElementById('normalStrengthVal');
+    const lightIntensity = document.getElementById('lightIntensity');
+    const lightColor = document.getElementById('lightColor');
+    const lightIntVal = document.getElementById('lightIntVal');
+
+    resizeBtn.addEventListener('click', () => {
+        // 1. 获取输入框的数值
+        const newW = parseInt(widthInput.value);
+        const newH = parseInt(heightInput.value);
+
+        // 2. 修改 HTML 容器的大小 (就像你手动改 CSS 一样)
+        container.style.width = newW + 'px';
+        container.style.height = newH + 'px';
+
+        // 3. 核心：通知 Three.js 和 Shader 更新
+        updateRendererSize(newW, newH);
+    });
+
+    // 提取一个通用的更新函数（为了代码复用）
+    function updateRendererSize(w, h) {
+        // 更新渲染器尺寸
+        renderer.setSize(w, h);
+        
+        // 重新创建/调整累积缓冲区的尺寸（非常重要，否则画面会拉伸或模糊）
+        sampleTarget.setSize(w, h);
+        accumTargetA.setSize(w, h);
+        accumTargetB.setSize(w, h);
+        
+        // 更新 Shader 里的分辨率变量
+        rayMaterial.uniforms.u_resolution.value.set(w, h);
+        
+        // 更新相机长宽比
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        
+        // 重置渲染累积
+        frameCount = 0;
+    }
+
+    resetBtn.addEventListener('click', () => {
+        frameCount = 0;
+    });
+
+    function setText(el, v) { el.textContent = String(v); }
+
+    function updateBounces() {
+        const v = parseInt(bouncesInput.value, 10);
+        rayMaterial.uniforms.u_maxBounces.value = v;
+        setText(bouncesVal, v);
+        frameCount = 0;
+    }
+
+    function updateGlass() {
+        const x = parseFloat(glassX.value);
+        const y = parseFloat(glassY.value);
+        const z = parseFloat(glassZ.value);
+        const r = parseFloat(glassR.value);
+        const ior = parseFloat(glassIor.value);
+        rayMaterial.uniforms.u_glassCenter.value.set(x, y, z);
+        rayMaterial.uniforms.u_glassRadius.value = r;
+        rayMaterial.uniforms.u_glassIOR.value = ior;
+        setText(glassXVal, x.toFixed(2));
+        setText(glassYVal, y.toFixed(2));
+        setText(glassZVal, z.toFixed(2));
+        setText(glassRVal, r.toFixed(2));
+        setText(glassIorVal, ior.toFixed(2));
+        frameCount = 0;
+    }
+
+    function updateWoodMaterial() {
+        const r = parseFloat(woodRough.value);
+        const m = parseFloat(woodMetal.value);
+        rayMaterial.uniforms.u_woodRoughnessScale.value = r;
+        rayMaterial.uniforms.u_woodMetalnessScale.value = m;
+        setText(woodRoughVal, r.toFixed(2));
+        setText(woodMetalVal, m.toFixed(2));
+        frameCount = 0;
+    }
+
+    function updateNormalStrength() {
+        const s = parseFloat(normalStrength.value);
+        rayMaterial.uniforms.u_normalStrength.value = s;
+        setText(normalStrengthVal, s.toFixed(2));
+        frameCount = 0;
+    }
+
+    function updateLight() {
+        const i = parseFloat(lightIntensity.value);
+        rayMaterial.uniforms.u_lightIntensity.value = i;
+        setText(lightIntVal, i.toFixed(2));
+        const c = new THREE.Color(lightColor.value);
+        rayMaterial.uniforms.u_lightColor.value.copy(c);
+        frameCount = 0;
+    }
+
+    bouncesInput.addEventListener('input', updateBounces);
+    glassX.addEventListener('input', updateGlass);
+    glassY.addEventListener('input', updateGlass);
+    glassZ.addEventListener('input', updateGlass);
+    glassR.addEventListener('input', updateGlass);
+    glassIor.addEventListener('input', updateGlass);
+    woodRough.addEventListener('input', updateWoodMaterial);
+    woodMetal.addEventListener('input', updateWoodMaterial);
+    normalStrength.addEventListener('input', updateNormalStrength);
+    lightIntensity.addEventListener('input', updateLight);
+    lightColor.addEventListener('input', updateLight);
+
+    updateBounces();
+    updateGlass();
+    updateWoodMaterial();
+    updateNormalStrength();
+    updateLight();
+</script>
+</body>
+</html>
